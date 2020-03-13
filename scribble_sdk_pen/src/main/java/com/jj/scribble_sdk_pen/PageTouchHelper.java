@@ -16,7 +16,6 @@ import com.jj.scribble_sdk_pen.data.TouchPoint;
 import com.jj.scribble_sdk_pen.data.TouchPointList;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
@@ -29,6 +28,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 public class PageTouchHelper implements View.OnTouchListener {
 
     private static final String TAG = "PageTouchHelper";
+    private static final int MOVE_OFFSET = 5;
     private final float widthRatio, heightRatio;
     private Bitmap surfaceViewTopBitmap;
     private SurfaceView surfaceView;
@@ -39,6 +39,7 @@ public class PageTouchHelper implements View.OnTouchListener {
     private boolean isRefresh;
     private Paint canvasPaint, renderPaint;
     private static final float STROKE_WIDTH = 6f;
+    private int lastPointsSize;
 
     @SuppressLint("ClickableViewAccessibility")
     private PageTouchHelper(SurfaceView surfaceView, Bitmap surfaceViewTopBitmap, RawInputCallback callback) {
@@ -73,7 +74,6 @@ public class PageTouchHelper implements View.OnTouchListener {
 
     private static final int ACTIVE_POINTER_ID = 0;
     private List<TouchPoint> points = new ArrayList<>();
-    private List<TouchPoint> lastPathPoints = new ArrayList<>();
     private ConcurrentLinkedDeque<List<TouchPoint>> pathQueue = new ConcurrentLinkedDeque<>();
 
     /**
@@ -107,9 +107,6 @@ public class PageTouchHelper implements View.OnTouchListener {
                 points.add(activeTouchPoint);
                 renderPath();
 
-                lastPathPoints.clear();
-                lastPathPoints.addAll(points);
-
                 TouchPointList touchPointList = new TouchPointList();
                 touchPointList.getPoints().addAll(points);
 
@@ -129,7 +126,11 @@ public class PageTouchHelper implements View.OnTouchListener {
                 }
 
                 points.add(activeTouchPoint);
-                renderPath();
+
+                //10个event绘制一遍
+                if (points.size() > (lastPointsSize + MOVE_OFFSET)) {
+                    renderPath();
+                }
 
                 if (callback != null) callback.onRawDrawingTouchPointMoveReceived(activeTouchPoint);
             }
@@ -168,12 +169,7 @@ public class PageTouchHelper implements View.OnTouchListener {
                         }
                         isRefresh = false;
 
-
-                        for (Iterator<List<TouchPoint>> mapIterator = pathQueue.iterator(); mapIterator.hasNext(); ) {
-                            List<TouchPoint> points = mapIterator.next();
-                            mapIterator.remove();
-                            doRender(points);
-                        }
+                        doRender(pathQueue.pollFirst());
 
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -210,7 +206,6 @@ public class PageTouchHelper implements View.OnTouchListener {
     private void doRender(List<TouchPoint> points) {
 
         long startDoRenderTime = System.currentTimeMillis();
-        Log.d(TAG, "doRender start time=" + startDoRenderTime);
 
         if (surfaceView.getHolder() == null) {
             Log.e(TAG, "doRender holder 为空 return");
@@ -250,6 +245,7 @@ public class PageTouchHelper implements View.OnTouchListener {
     }
 
     private void addAPath2Canvas(List<TouchPoint> points, Canvas canvas) {
+        long startTime = System.currentTimeMillis();
 
         convert(points);
 
@@ -275,6 +271,9 @@ public class PageTouchHelper implements View.OnTouchListener {
             canvas.drawPath(activePath, renderPaint);
 
         }
+
+        Log.d(TAG, "addAPath2Canvas consume time=" + (System.currentTimeMillis() - startTime));
+
     }
 
     private void convert(List<TouchPoint> points) {
@@ -286,6 +285,9 @@ public class PageTouchHelper implements View.OnTouchListener {
 
     private void renderPath() {
         Log.d(TAG, "renderPath start time=" + System.currentTimeMillis());
+
+        lastPointsSize = points.size();
+
         List<TouchPoint> pathPoints = new ArrayList<>();
         try {
             for (TouchPoint point : points) {
