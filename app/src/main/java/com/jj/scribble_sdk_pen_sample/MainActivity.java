@@ -2,9 +2,6 @@ package com.jj.scribble_sdk_pen_sample;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.graphics.Rect;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.SurfaceHolder;
@@ -38,14 +35,6 @@ public class MainActivity extends AppCompatActivity {
             }
 
             PageTouchHelper.create(surfaceView, surfaceViewTopBitmap, inputCallBack).setRawDrawingEnabled(true);
-
-
-            Paint renderPaint = new Paint();
-            renderPaint.setStyle(Paint.Style.FILL);
-
-            Canvas canvas = surfaceView.getHolder().lockCanvas();
-            canvas.drawBitmap(surfaceViewTopBitmap, null, new Rect(0, 0, surfaceView.getWidth(), surfaceView.getHeight()), renderPaint);
-            surfaceView.getHolder().unlockCanvasAndPost(canvas);
 
         }
 

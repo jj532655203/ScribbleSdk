@@ -51,6 +51,13 @@ public class PageTouchHelper implements View.OnTouchListener {
         initRenderPaint();
         initCanvasPaint();
 
+
+        //绘制初始内容
+        Canvas canvas = surfaceView.getHolder().lockCanvas();
+        canvas.drawColor(Color.WHITE);
+        canvas.drawBitmap(surfaceViewTopBitmap, null, new Rect(0, 0, surfaceView.getWidth(), surfaceView.getHeight()), canvasPaint);
+        surfaceView.getHolder().unlockCanvasAndPost(canvas);
+
         widthRatio = ((float) surfaceView.getWidth()) / surfaceViewTopBitmap.getWidth();
         heightRatio = ((float) surfaceView.getHeight()) / surfaceViewTopBitmap.getHeight();
 
