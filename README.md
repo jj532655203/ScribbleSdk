@@ -98,3 +98,5 @@ implementation 'com.github.jj532655203:ScribbleSdkPen:1.0.10'
 ###  4.另外
 TransparentScribbleView支持设置线宽和颜色,内部绘制线程在不绘制时处于wait状态,做到了最小能耗,切换页时请将旧page关闭书写,新page开启书写。
 觉得好请star！让大家都有动力继续开源吧！
+
+
