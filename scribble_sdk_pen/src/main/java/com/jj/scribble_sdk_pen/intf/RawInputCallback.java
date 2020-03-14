@@ -1,4 +1,4 @@
-package com.jj.scribble_sdk_pen;
+package com.jj.scribble_sdk_pen.intf;
 
 import com.jj.scribble_sdk_pen.data.TouchPoint;
 import com.jj.scribble_sdk_pen.data.TouchPointList;

@@ -53,7 +53,7 @@
 -keep public class * extends android.content.ContentProvider
 -keep public class * extends android.app.backup.BackupAgentHelper
 -keep public class * extends android.preference.Preference
--keep public class * extends android.view.View
+#-keep public class * extends android.view.View
 -keep public class com.android.vending.licensing.ILicensingService
 #-keep class android.support.** {*;}
 
@@ -112,3 +112,5 @@
 #---------------------------------------------------------------------------------------------------
 #---------------------------------实体类---------------------------------
 -keep class com.jj.scribble_sdk_pen.data.** { *; }
+#---------------------------------接口---------------------------------
+-keep class com.jj.scribble_sdk_pen.intf.** { *; }
