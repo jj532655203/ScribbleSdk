@@ -25,13 +25,30 @@ public class TransparentScribbleView extends SurfaceView {
     private boolean is2StopRender;
     private boolean isRenderRunning;
     private boolean isRefresh;
-    private Paint canvasPaint, renderPaint;
-    private static final float STROKE_WIDTH = 12f;
+    private Paint renderPaint;
+    private float strokeWidth = 12f;
+    private int strokeColor = Color.BLACK;
     private RawInputCallback rawInputCallback;
     private static final int ACTIVE_POINTER_ID = 0;
     private TouchPointList activeTouchPointList = new TouchPointList();
     private ConcurrentLinkedDeque<TouchPointList> pathQueue = new ConcurrentLinkedDeque<>();
     private ConcurrentLinkedDeque<TouchPointList> last16PathQueue = new ConcurrentLinkedDeque<>();
+
+    public int getStrokeColor() {
+        return strokeColor;
+    }
+
+    public void setStrokeColor(int strokeColor) {
+        this.strokeColor = strokeColor;
+    }
+
+    public float getStrokeWidth() {
+        return strokeWidth;
+    }
+
+    public void setStrokeWidth(float strokeWidth) {
+        this.strokeWidth = strokeWidth;
+    }
 
     public TransparentScribbleView setRawInputCallback(RawInputCallback rawInputCallback) {
         this.rawInputCallback = rawInputCallback;
@@ -53,9 +70,7 @@ public class TransparentScribbleView extends SurfaceView {
         setZOrderOnTop(true);
         getHolder().setFormat(PixelFormat.TRANSLUCENT);
 
-
         initRenderPaint();
-        initCanvasPaint();
 
     }
 
@@ -164,16 +179,9 @@ public class TransparentScribbleView extends SurfaceView {
     private void initRenderPaint() {
         if (renderPaint != null) return;
         renderPaint = new Paint();
-        renderPaint.setStrokeWidth(STROKE_WIDTH);
+        renderPaint.setStrokeWidth(strokeWidth);
         renderPaint.setStyle(Paint.Style.STROKE);
-        renderPaint.setColor(Color.BLACK);
-    }
-
-    private void initCanvasPaint() {
-        if (canvasPaint != null) return;
-        canvasPaint = new Paint();
-        canvasPaint.setStyle(Paint.Style.FILL);
-        canvasPaint.setColor(Color.WHITE);
+        renderPaint.setColor(strokeColor);
     }
 
     private void doRender(TouchPointList touchPointList) {
