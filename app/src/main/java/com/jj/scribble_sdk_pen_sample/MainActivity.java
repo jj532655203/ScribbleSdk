@@ -1,40 +1,26 @@
 package com.jj.scribble_sdk_pen_sample;
 
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.SurfaceHolder;
-import android.view.SurfaceView;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.jj.scribble_sdk_pen.PageTouchHelper;
 import com.jj.scribble_sdk_pen.RawInputCallback;
+import com.jj.scribble_sdk_pen.TransparentScribbleView;
 import com.jj.scribble_sdk_pen.data.TouchPoint;
 import com.jj.scribble_sdk_pen.data.TouchPointList;
 
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
-    private Bitmap surfaceViewTopBitmap;
 
-    private SurfaceHolder.Callback callBack = new SurfaceHolder.Callback() {
+    private SurfaceHolder.Callback holderCallBack = new SurfaceHolder.Callback() {
         @Override
         public void surfaceCreated(SurfaceHolder holder) {
             Log.d(TAG, "surfaceCreated");
 
-            BitmapFactory.Options ops = new BitmapFactory.Options();
-            ops.outWidth = 1920;
-            ops.outHeight = 1080;
-            surfaceViewTopBitmap = BitmapFactory.decodeResource(surfaceView.getResources(), R.mipmap.exam, ops);
-            if (!surfaceViewTopBitmap.isMutable()) {
-                Bitmap newBitmap = surfaceViewTopBitmap.copy(Bitmap.Config.ARGB_8888, true);
-                surfaceViewTopBitmap.recycle();
-                surfaceViewTopBitmap = newBitmap;
-            }
-
-            PageTouchHelper.create(surfaceView, surfaceViewTopBitmap, inputCallBack).setRawDrawingEnabled(true);
+            surfaceView.setRawInputCallback(inputCallBack).setRawDrawingEnable(true);
 
         }
 
@@ -75,7 +61,7 @@ public class MainActivity extends AppCompatActivity {
 
         }
     };
-    private SurfaceView surfaceView;
+    private TransparentScribbleView surfaceView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -83,7 +69,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         surfaceView = findViewById(R.id.surface_view);
-        surfaceView.getHolder().addCallback(callBack);
+        surfaceView.getHolder().addCallback(holderCallBack);
 
     }
 }

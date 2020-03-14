@@ -1,94 +1,71 @@
 package com.jj.scribble_sdk_pen;
 
-import android.annotation.SuppressLint;
-import android.graphics.Bitmap;
+import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
-import android.graphics.Rect;
+import android.graphics.PixelFormat;
+import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.SurfaceView;
-import android.view.View;
 
 import com.jj.scribble_sdk_pen.data.TouchPoint;
 import com.jj.scribble_sdk_pen.data.TouchPointList;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
-/**
- * Jay
- * 1.实时显示笔迹
- * 3.回调笔迹线集合
- * 3.暂停/继续书写功能
- */
-public class PageTouchHelper implements View.OnTouchListener {
+public class TransparentScribbleView extends SurfaceView {
 
-    private static final String TAG = "PageTouchHelper";
-    private static final int MOVE_OFFSET = 5;
-    private final float widthRatio, heightRatio;
-    private Bitmap surfaceViewTopBitmap;
-    private SurfaceView surfaceView;
-    private RawInputCallback callback;
+    private static final String TAG = "TransparentScribbleView";
+    private static final int FRAME_CACHE_SIZE = 16;
     private WaitGo waitGo = new WaitGo();
     private boolean is2StopRender;
     private boolean isRenderRunning;
     private boolean isRefresh;
     private Paint canvasPaint, renderPaint;
-    private static final float STROKE_WIDTH = 6f;
-    private int lastPointsSize;
+    private static final float STROKE_WIDTH = 12f;
+    private RawInputCallback rawInputCallback;
+    private static final int ACTIVE_POINTER_ID = 0;
+    private TouchPointList activeTouchPointList = new TouchPointList();
+    private ConcurrentLinkedDeque<TouchPointList> pathQueue = new ConcurrentLinkedDeque<>();
+    private ConcurrentLinkedDeque<TouchPointList> last16PathQueue = new ConcurrentLinkedDeque<>();
 
-    @SuppressLint("ClickableViewAccessibility")
-    private PageTouchHelper(SurfaceView surfaceView, Bitmap surfaceViewTopBitmap, RawInputCallback callback) {
-        this.surfaceView = surfaceView;
-        this.surfaceViewTopBitmap = surfaceViewTopBitmap;
-        this.callback = callback;
-        assert surfaceView != null;
-        surfaceView.setOnTouchListener(this);
+    public TransparentScribbleView setRawInputCallback(RawInputCallback rawInputCallback) {
+        this.rawInputCallback = rawInputCallback;
+        return this;
+    }
+
+    public TransparentScribbleView(Context context) {
+        this(context, null);
+    }
+
+    public TransparentScribbleView(Context context, AttributeSet attrs) {
+        this(context, attrs, 0);
+    }
+
+    public TransparentScribbleView(Context context, AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+
+        setBackgroundResource(R.color.transparent);
+        setZOrderOnTop(true);
+        getHolder().setFormat(PixelFormat.TRANSLUCENT);
+
+
         initRenderPaint();
         initCanvasPaint();
 
-
-        //绘制初始内容
-        Canvas canvas = surfaceView.getHolder().lockCanvas();
-        canvas.drawColor(Color.WHITE);
-        canvas.drawBitmap(surfaceViewTopBitmap, null, new Rect(0, 0, surfaceView.getWidth(), surfaceView.getHeight()), canvasPaint);
-        surfaceView.getHolder().unlockCanvasAndPost(canvas);
-
-        widthRatio = ((float) surfaceView.getWidth()) / surfaceViewTopBitmap.getWidth();
-        heightRatio = ((float) surfaceView.getHeight()) / surfaceViewTopBitmap.getHeight();
-
     }
 
-    /**
-     * 本方法务必在surfaceViewCreated后调用
-     */
-    public static PageTouchHelper create(SurfaceView surfaceView, Bitmap surfaceViewTopBitmap, RawInputCallback callback) {
-        if (surfaceView == null) {
-            throw new IllegalArgumentException("surfaceView should not be null!");
-        }/* else if (surfaceView.getHolder().isCreating()) {
-            throw new IllegalArgumentException("please call method after surfaceView created!");
-        }*/ else if (surfaceViewTopBitmap == null || surfaceViewTopBitmap.isRecycled() || !surfaceViewTopBitmap.isMutable()) {
-            throw new IllegalArgumentException("surfaceViewTopBitmap invalid!");
-        } else {
-            return new PageTouchHelper(surfaceView, surfaceViewTopBitmap, callback);
-        }
-    }
-
-
-    private static final int ACTIVE_POINTER_ID = 0;
-    private List<TouchPoint> points = new ArrayList<>();
-    private ConcurrentLinkedDeque<List<TouchPoint>> pathQueue = new ConcurrentLinkedDeque<>();
 
     /**
      * 监听surfaceView的motionEvent
      * 只监听第一根手指
      */
     @Override
-    public boolean onTouch(View v, MotionEvent event) {
+    public boolean onTouchEvent(MotionEvent event) {
         Log.d(TAG, "onTouch");
 
         TouchPoint activeTouchPoint = new TouchPoint(event.getX(), event.getY());
@@ -96,12 +73,11 @@ public class PageTouchHelper implements View.OnTouchListener {
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: {
 
-                points.clear();
-
-                points.add(activeTouchPoint);
+                activeTouchPointList.getPoints().clear();
+                activeTouchPointList.add(activeTouchPoint);
                 renderPath();
 
-                if (callback != null) callback.onBeginRawDrawing(activeTouchPoint);
+                if (rawInputCallback != null) rawInputCallback.onBeginRawDrawing(activeTouchPoint);
             }
             break;
             case MotionEvent.ACTION_OUTSIDE:
@@ -111,18 +87,18 @@ public class PageTouchHelper implements View.OnTouchListener {
                     break;
                 }
 
-                points.add(activeTouchPoint);
+                activeTouchPointList.add(activeTouchPoint);
                 renderPath();
 
                 TouchPointList touchPointList = new TouchPointList();
-                touchPointList.getPoints().addAll(points);
+                touchPointList.addAll(activeTouchPointList);
 
-                points.clear();
+                activeTouchPointList.getPoints().clear();
 
-                if (callback != null) {
-                    callback.onRawDrawingTouchPointListReceived(touchPointList);
+                if (rawInputCallback != null) {
+                    rawInputCallback.onRawDrawingTouchPointListReceived(touchPointList);
 
-                    callback.onEndRawDrawing(activeTouchPoint);
+                    rawInputCallback.onEndRawDrawing(activeTouchPoint);
                 }
             }
             break;
@@ -132,14 +108,12 @@ public class PageTouchHelper implements View.OnTouchListener {
                     break;
                 }
 
-                points.add(activeTouchPoint);
+                activeTouchPointList.add(activeTouchPoint);
 
-                //10个event绘制一遍
-                if (points.size() > (lastPointsSize + MOVE_OFFSET)) {
-                    renderPath();
-                }
+                renderPath();
 
-                if (callback != null) callback.onRawDrawingTouchPointMoveReceived(activeTouchPoint);
+                if (rawInputCallback != null)
+                    rawInputCallback.onRawDrawingTouchPointMoveReceived(activeTouchPoint);
             }
             break;
         }
@@ -147,15 +121,7 @@ public class PageTouchHelper implements View.OnTouchListener {
     }
 
 
-    public void setRawDrawingEnabled(boolean enable) {
-        if (enable) {
-            startRenderThread();
-        } else {
-            stopRenderThread();
-        }
-    }
-
-    private synchronized void startRenderThread() {
+    synchronized void startRenderThread() {
         is2StopRender = false;
         if (isRenderRunning) {
             return;
@@ -189,7 +155,7 @@ public class PageTouchHelper implements View.OnTouchListener {
         });
     }
 
-    private void stopRenderThread() {
+    void stopRenderThread() {
         if (!isRenderRunning) return;
         is2StopRender = true;
         waitGo.go();
@@ -210,22 +176,32 @@ public class PageTouchHelper implements View.OnTouchListener {
         canvasPaint.setColor(Color.WHITE);
     }
 
-    private void doRender(List<TouchPoint> points) {
+    private void doRender(TouchPointList touchPointList) {
+        List<TouchPoint> points = touchPointList.getPoints();
 
         long startDoRenderTime = System.currentTimeMillis();
 
-        if (surfaceView.getHolder() == null) {
+        if (getHolder() == null) {
             Log.e(TAG, "doRender holder 为空 return");
             return;
         }
-        if (!surfaceView.getHolder().getSurface().isValid()) {
+        if (!getHolder().getSurface().isValid()) {
             Log.e(TAG, "surfaceView released return");
             return;
         }
 
         Canvas canvas = null;
         try {
-            canvas = surfaceView.getHolder().lockCanvas();
+            canvas = getHolder().lockCanvas();
+
+            //由于双缓冲机制,得绘制最近几根笔迹
+            for (TouchPointList lastPath : last16PathQueue) {
+                if (lastPath.size() == 0) {
+                    continue;
+                }
+
+                addAPath2Canvas(lastPath.getPoints(), canvas);
+            }
 
             //绘制本次笔迹
             if (points.isEmpty()) {
@@ -234,18 +210,14 @@ public class PageTouchHelper implements View.OnTouchListener {
 
 
             //添加新笔迹
-            addAPath2Canvas(points, new Canvas(surfaceViewTopBitmap));
+            addAPath2Canvas(points, canvas);
 
-            //将新内容绘制到surfaceview
-            canvas.drawColor(Color.TRANSPARENT);
-            canvas.drawBitmap(surfaceViewTopBitmap, null, new Rect(0, 0, surfaceView.getWidth(), surfaceView.getHeight()), renderPaint);
-
-            Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime));
+            Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime) + "?last16PathQueue.size=" + last16PathQueue.size() + "?pathQueue.size=" + pathQueue.size());
         } catch (Exception e) {
             Log.e(TAG, "doRender e=" + Log.getStackTraceString(e));
         } finally {
             if (canvas != null) {
-                surfaceView.getHolder().unlockCanvasAndPost(canvas);
+                getHolder().unlockCanvasAndPost(canvas);
             }
         }
 
@@ -253,8 +225,6 @@ public class PageTouchHelper implements View.OnTouchListener {
 
     private void addAPath2Canvas(List<TouchPoint> points, Canvas canvas) {
         long startTime = System.currentTimeMillis();
-
-        convert(points);
 
         int size = points.size();
         if (size == 1 || size == 2) {
@@ -283,31 +253,30 @@ public class PageTouchHelper implements View.OnTouchListener {
 
     }
 
-    private void convert(List<TouchPoint> points) {
-        for (TouchPoint point : points) {
-            point.x = point.x / widthRatio;
-            point.y = point.y / heightRatio;
-        }
-    }
-
     private void renderPath() {
-        Log.d(TAG, "renderPath start time=" + System.currentTimeMillis());
+        Log.d(TAG, "renderPath start");
 
-        lastPointsSize = points.size();
-
-        List<TouchPoint> pathPoints = new ArrayList<>();
-        try {
-            for (TouchPoint point : points) {
-                pathPoints.add(point.clone());
-            }
-        } catch (CloneNotSupportedException e) {
-            e.printStackTrace();
-            Log.e(TAG, "renderPath clone failed");
+        if (last16PathQueue.size() == FRAME_CACHE_SIZE) {
+            last16PathQueue.removeFirst();
         }
-        pathQueue.add(pathPoints);
+        TouchPointList lastTouchPointList = new TouchPointList(activeTouchPointList.size());
+        lastTouchPointList.addAll(activeTouchPointList);
+        last16PathQueue.add(lastTouchPointList);
+
+        TouchPointList touchPointList = new TouchPointList(activeTouchPointList.size());
+        touchPointList.addAll(activeTouchPointList);
+
+        pathQueue.add(touchPointList);
         isRefresh = true;
         if (!waitGo.isGo()) waitGo.go();
     }
 
 
+    public void setRawDrawingEnable(boolean enable) {
+        if (enable) {
+            startRenderThread();
+        } else {
+            stopRenderThread();
+        }
+    }
 }
