@@ -6,10 +6,10 @@ import android.view.SurfaceHolder;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.jj.scribble_sdk_pen.RawInputCallback;
 import com.jj.scribble_sdk_pen.TransparentScribbleView;
 import com.jj.scribble_sdk_pen.data.TouchPoint;
 import com.jj.scribble_sdk_pen.data.TouchPointList;
+import com.jj.scribble_sdk_pen.intf.RawInputCallback;
 
 public class MainActivity extends AppCompatActivity {
 

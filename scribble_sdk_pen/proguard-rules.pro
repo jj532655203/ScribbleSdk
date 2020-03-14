@@ -57,21 +57,17 @@
 -keep public class com.android.vending.licensing.ILicensingService
 #-keep class android.support.** {*;}
 
--keep public class * extends android.view.View{
-    *** get*();
-    void set*(***);
-    public <init>(android.content.Context);
-    public <init>(android.content.Context, android.util.AttributeSet);
-    public <init>(android.content.Context, android.util.AttributeSet, int);
-}
--keepclasseswithmembers class * {
-    public <init>(android.content.Context, android.util.AttributeSet);
-    public <init>(android.content.Context, android.util.AttributeSet, int);
-}
-#这个主要是在layout 中写的onclick方法android:onclick="onClick"，不进行混淆
--keepclassmembers class * extends android.app.Activity {
-   public void *(android.view.View);
-}
+#-keep public class * extends android.view.View{
+#    *** get*();
+#    void set*(***);
+#    public <init>(android.content.Context);
+#    public <init>(android.content.Context, android.util.AttributeSet);
+#    public <init>(android.content.Context, android.util.AttributeSet, int);
+#}
+#-keepclasseswithmembers class * {
+#    public <init>(android.content.Context, android.util.AttributeSet);
+#    public <init>(android.content.Context, android.util.AttributeSet, int);
+#}
 
 -keepclassmembers class * implements java.io.Serializable {
     static final long serialVersionUID;
@@ -114,3 +110,9 @@
 -keep class com.jj.scribble_sdk_pen.data.** { *; }
 #---------------------------------接口---------------------------------
 -keep class com.jj.scribble_sdk_pen.intf.** { *; }
+
+
+-keep class com.jj.scribble_sdk_pen.TransparentScribbleView
+-keepclassmembers class com.jj.scribble_sdk_pen.TransparentScribbleView  {
+    public <methods>;
+}
