@@ -290,4 +290,10 @@ public class TransparentScribbleView extends SurfaceView {
 
     }
 
+    public void reproduceScribblesAfterSurfaceRecreated() {
+        Log.d(TAG, "reproduceScribblesAfterSurfaceRecreated ");
+        isRefresh = true;
+        if (!waitGo.isGo()) waitGo.go();
+    }
+
 }
