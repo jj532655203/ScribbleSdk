@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
+import android.graphics.PorterDuff;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -150,6 +151,8 @@ public class TransparentScribbleView extends SurfaceView {
                 Log.d(TAG, "startRenderThread ThreadName=" + Thread.currentThread().getName());
 
                 while (!is2StopRender) {
+
+                    Canvas canvas = null;
                     try {
                         if (!isRefresh) {
                             waitGo.waitOne();
@@ -157,11 +160,38 @@ public class TransparentScribbleView extends SurfaceView {
                         }
                         isRefresh = false;
 
-                        doRender();
+
+                        long startDoRenderTime = System.currentTimeMillis();
+
+                        if (getHolder() != null && getHolder().getSurface().isValid()) {
+
+                            canvas = getHolder().lockCanvas();
+
+                            //由于双缓冲机制,得绘制最近几根笔迹
+                            for (TouchPointList lastPath : last16PathQueue) {
+                                if (lastPath.size() == 0) {
+                                    continue;
+                                }
+
+                                if (is2StopRender) break;
+
+                                addAPath2Canvas(lastPath.getPoints(), canvas);
+                            }
+
+                            Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime) + "?last16PathQueue.size=" + last16PathQueue.size());
+
+                        } else {
+                            Log.e(TAG, "surfaceView released return");
+                        }
 
                     } catch (Exception e) {
                         e.printStackTrace();
+                    } finally {
+                        if (canvas != null) {
+                            getHolder().unlockCanvasAndPost(canvas);
+                        }
                     }
+
                 }
 
                 isRenderRunning = false;
@@ -182,44 +212,6 @@ public class TransparentScribbleView extends SurfaceView {
         renderPaint.setStrokeWidth(strokeWidth);
         renderPaint.setStyle(Paint.Style.STROKE);
         renderPaint.setColor(strokeColor);
-    }
-
-    private void doRender() {
-
-        long startDoRenderTime = System.currentTimeMillis();
-
-        if (getHolder() == null) {
-            Log.e(TAG, "doRender holder 为空 return");
-            return;
-        }
-        if (!getHolder().getSurface().isValid()) {
-            Log.e(TAG, "surfaceView released return");
-            return;
-        }
-
-        Canvas canvas = null;
-        try {
-            canvas = getHolder().lockCanvas();
-
-            //由于双缓冲机制,得绘制最近几根笔迹
-            for (TouchPointList lastPath : last16PathQueue) {
-                if (lastPath.size() == 0) {
-                    continue;
-                }
-
-                addAPath2Canvas(lastPath.getPoints(), canvas);
-            }
-
-
-            Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime) + "?last16PathQueue.size=" + last16PathQueue.size());
-        } catch (Exception e) {
-            Log.e(TAG, "doRender e=" + Log.getStackTraceString(e));
-        } finally {
-            if (canvas != null) {
-                getHolder().unlockCanvasAndPost(canvas);
-            }
-        }
-
     }
 
     private void addAPath2Canvas(List<TouchPoint> points, Canvas canvas) {
@@ -273,6 +265,8 @@ public class TransparentScribbleView extends SurfaceView {
 
 
     public void setRawDrawingEnable(boolean enable) {
+        Log.d(TAG, "setRawDrawingEnable enable=" + enable);
+
         if (enable) {
             startRenderThread();
         } else {
@@ -280,8 +274,20 @@ public class TransparentScribbleView extends SurfaceView {
         }
     }
 
-    public void clear() {
+    public void clearScreenAfterSurfaceViewCreated() {
+        Log.d(TAG, "clearScreenAfterSurfaceViewCreated ");
+
         last16PathQueue.clear();
         activeTouchPointList.getPoints().clear();
+
+        Canvas canvas = getHolder().lockCanvas();
+        if (canvas != null) {
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            getHolder().unlockCanvasAndPost(canvas);
+        } else {
+            Log.e(TAG, "clearScreenAfterSurfaceViewCreated 失败!");
+        }
+
     }
+
 }
