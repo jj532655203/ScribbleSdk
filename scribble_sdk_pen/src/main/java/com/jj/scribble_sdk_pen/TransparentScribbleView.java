@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 public class TransparentScribbleView extends SurfaceView {
 
     private static final String TAG = "TransparentScribbleView";
-    private static final int FRAME_CACHE_SIZE = 16;
+    private static final int FRAME_CACHE_SIZE = 32;
     private WaitGo waitGo = new WaitGo();
     private boolean is2StopRender;
     private boolean isRenderRunning;
@@ -32,7 +32,6 @@ public class TransparentScribbleView extends SurfaceView {
     private RawInputCallback rawInputCallback;
     private static final int ACTIVE_POINTER_ID = 0;
     private TouchPointList activeTouchPointList = new TouchPointList();
-    private ConcurrentLinkedDeque<TouchPointList> pathQueue = new ConcurrentLinkedDeque<>();
     private ConcurrentLinkedDeque<TouchPointList> last16PathQueue = new ConcurrentLinkedDeque<>();
 
     public int getStrokeColor() {
@@ -158,7 +157,7 @@ public class TransparentScribbleView extends SurfaceView {
                         }
                         isRefresh = false;
 
-                        doRender(pathQueue.pollFirst());
+                        doRender();
 
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -185,8 +184,7 @@ public class TransparentScribbleView extends SurfaceView {
         renderPaint.setColor(strokeColor);
     }
 
-    private void doRender(TouchPointList touchPointList) {
-        List<TouchPoint> points = touchPointList.getPoints();
+    private void doRender() {
 
         long startDoRenderTime = System.currentTimeMillis();
 
@@ -212,16 +210,8 @@ public class TransparentScribbleView extends SurfaceView {
                 addAPath2Canvas(lastPath.getPoints(), canvas);
             }
 
-            //绘制本次笔迹
-            if (points.isEmpty()) {
-                return;
-            }
 
-
-            //添加新笔迹
-            addAPath2Canvas(points, canvas);
-
-            Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime) + "?last16PathQueue.size=" + last16PathQueue.size() + "?pathQueue.size=" + pathQueue.size());
+            Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime) + "?last16PathQueue.size=" + last16PathQueue.size());
         } catch (Exception e) {
             Log.e(TAG, "doRender e=" + Log.getStackTraceString(e));
         } finally {
@@ -233,6 +223,11 @@ public class TransparentScribbleView extends SurfaceView {
     }
 
     private void addAPath2Canvas(List<TouchPoint> points, Canvas canvas) {
+
+        if (points == null || points.isEmpty()) {
+            return;
+        }
+
         long startTime = System.currentTimeMillis();
 
         int size = points.size();
@@ -272,10 +267,6 @@ public class TransparentScribbleView extends SurfaceView {
         lastTouchPointList.addAll(activeTouchPointList);
         last16PathQueue.add(lastTouchPointList);
 
-        TouchPointList touchPointList = new TouchPointList(activeTouchPointList.size());
-        touchPointList.addAll(activeTouchPointList);
-
-        pathQueue.add(touchPointList);
         isRefresh = true;
         if (!waitGo.isGo()) waitGo.go();
     }
@@ -287,5 +278,10 @@ public class TransparentScribbleView extends SurfaceView {
         } else {
             stopRenderThread();
         }
+    }
+
+    public void clear() {
+        last16PathQueue.clear();
+        activeTouchPointList.getPoints().clear();
     }
 }
