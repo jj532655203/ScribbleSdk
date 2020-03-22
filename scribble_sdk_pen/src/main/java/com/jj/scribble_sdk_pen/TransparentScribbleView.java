@@ -10,6 +10,7 @@ import android.graphics.PorterDuff;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
 import com.jj.scribble_sdk_pen.data.TouchPoint;
@@ -69,7 +70,25 @@ public class TransparentScribbleView extends SurfaceView {
 
         setBackgroundResource(R.color.transparent);
         setZOrderOnTop(true);
-        getHolder().setFormat(PixelFormat.TRANSLUCENT);
+        SurfaceHolder holder = getHolder();
+        holder.setFormat(PixelFormat.TRANSLUCENT);
+        holder.addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+                Log.d(TAG, "surfaceCreated ");
+                reproduceScribblesAfterSurfaceRecreated();
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+                Log.d(TAG, "surfaceChanged");
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+                Log.d(TAG, "surfaceDestroyed");
+            }
+        });
 
         initRenderPaint();
 
@@ -292,6 +311,10 @@ public class TransparentScribbleView extends SurfaceView {
 
     public void reproduceScribblesAfterSurfaceRecreated() {
         Log.d(TAG, "reproduceScribblesAfterSurfaceRecreated ");
+        if (!isRenderRunning) {
+            Log.e(TAG, "reproduceScribblesAfterSurfaceRecreated --> need setRawDrawingEnable(true) first!");
+            return;
+        }
         isRefresh = true;
         if (!waitGo.isGo()) waitGo.go();
     }
