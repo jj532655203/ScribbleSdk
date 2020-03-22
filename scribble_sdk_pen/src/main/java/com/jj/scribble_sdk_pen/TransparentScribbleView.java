@@ -72,23 +72,6 @@ public class TransparentScribbleView extends SurfaceView {
         setZOrderOnTop(true);
         SurfaceHolder holder = getHolder();
         holder.setFormat(PixelFormat.TRANSLUCENT);
-        holder.addCallback(new SurfaceHolder.Callback() {
-            @Override
-            public void surfaceCreated(SurfaceHolder holder) {
-                Log.d(TAG, "surfaceCreated ");
-                reproduceScribblesAfterSurfaceRecreated();
-            }
-
-            @Override
-            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-                Log.d(TAG, "surfaceChanged");
-            }
-
-            @Override
-            public void surfaceDestroyed(SurfaceHolder holder) {
-                Log.d(TAG, "surfaceDestroyed");
-            }
-        });
 
         initRenderPaint();
 
@@ -283,16 +266,26 @@ public class TransparentScribbleView extends SurfaceView {
     }
 
 
+    /**
+     * start scribble thread when onResume!stop it when onPause!
+     *
+     * @param enable true to start,otherwise to top.
+     */
     public void setRawDrawingEnable(boolean enable) {
         Log.d(TAG, "setRawDrawingEnable enable=" + enable);
 
         if (enable) {
             startRenderThread();
+            reproduceScribblesAfterSurfaceRecreated();
         } else {
             stopRenderThread();
         }
     }
 
+    /**
+     * when this TransparentScribbleView need swipe up(case : used to a new page),you need call this function .
+     * call this function must surfaceCreated!
+     */
     public void clearScreenAfterSurfaceViewCreated() {
         Log.d(TAG, "clearScreenAfterSurfaceViewCreated ");
 
@@ -309,6 +302,10 @@ public class TransparentScribbleView extends SurfaceView {
 
     }
 
+    /**
+     * reproduce scribbles after surface recreate,but need setRawDrawingEnable(true) first;
+     * setRawDrawingEnable(true) is a perfect trigger,since at the time is onResumed(as well as surface created)
+     */
     public void reproduceScribblesAfterSurfaceRecreated() {
         Log.d(TAG, "reproduceScribblesAfterSurfaceRecreated ");
         if (!isRenderRunning) {
