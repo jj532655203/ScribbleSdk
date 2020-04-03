@@ -1,2 +1,2 @@
 include ':app', ':scribble_sdk_pen'
-rootProject.name='ScribbleView'
+rootProject.name='ScribbleSdk'
