@@ -1,7 +1,9 @@
 # ScribbleSdk-Pen
 
-apk下载地址:https://phone-love-piano-public-ro.oss-cn-shenzhen.aliyuncs.com/demo-apk/scribble_view_scan_qrcode_download.png
+apk下载地址:https://phone-love-piano-public-ro.oss-cn-shenzhen.aliyuncs.com/demo-apk/scribble_sdk_debug_0403.apk
+
 或手机扫码下载
+
 ![Image scan qrcode download](https://phone-love-piano-public-ro.oss-cn-shenzhen.aliyuncs.com/demo-apk/scribble_sdk_scan_qrcode_download.png)
 
 ##  本项目中TransparentScribbleView为即时显示触控笔迹的透明层,使用surfaceview的双缓冲机制,手写(或笔写)非常流畅,长笔迹+大笔迹量情况下依然无延迟
