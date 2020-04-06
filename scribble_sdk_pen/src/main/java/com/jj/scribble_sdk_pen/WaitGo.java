@@ -7,14 +7,14 @@ package com.jj.scribble_sdk_pen;
 
 public class WaitGo {
     private final Object _monitor = new Object();
-    private volatile boolean isGo = false;
+    private volatile boolean isWait;
 
     public void waitOne() throws InterruptedException {
         synchronized (_monitor) {
-            while (!isGo) {
+            while (!isWait) {
                 _monitor.wait();
             }
-            isGo = false;
+            isWait = true;
         }
     }
 
@@ -22,7 +22,7 @@ public class WaitGo {
         synchronized (_monitor) {
             boolean result = false;
             long t = System.currentTimeMillis();
-            while (!isGo) {
+            while (!isWait) {
                 _monitor.wait(timeout);
                 // Check for timeout
                 if (System.currentTimeMillis() - t >= timeout) {
@@ -31,23 +31,23 @@ public class WaitGo {
                     result = true;
                 }
             }
-            isGo = false;
+            isWait = true;
             return result;
         }
     }
 
     public void go() {
         synchronized (_monitor) {
-            isGo = true;
+            isWait = false;
             _monitor.notify();
         }
     }
 
     public void reset() {
-        isGo = false;
+        isWait = false;
     }
 
     public boolean isGo() {
-        return isGo;
+        return !isWait;
     }
 }
