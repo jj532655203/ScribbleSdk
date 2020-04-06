@@ -24,7 +24,7 @@ public class TransparentScribbleView extends SurfaceView {
 
     private static final String TAG = "TransparentScribbleView";
     private static final int FRAME_CACHE_SIZE = 32;
-    private WaitGo waitGo = new WaitGo();
+    private WaitGo renderThreadWaitGo = new WaitGo();
     private boolean is2StopRender;
     private boolean isRenderRunning;
     private boolean isRefresh;
@@ -157,7 +157,7 @@ public class TransparentScribbleView extends SurfaceView {
                     Canvas canvas = null;
                     try {
                         if (!isRefresh) {
-                            waitGo.waitOne();
+                            renderThreadWaitGo.wait1();
                             continue;
                         }
                         isRefresh = false;
@@ -205,7 +205,7 @@ public class TransparentScribbleView extends SurfaceView {
     void stopRenderThread() {
         if (!isRenderRunning) return;
         is2StopRender = true;
-        waitGo.go();
+        renderThreadWaitGo.go();
     }
 
     private void initRenderPaint() {
@@ -262,7 +262,7 @@ public class TransparentScribbleView extends SurfaceView {
         last16PathQueue.add(lastTouchPointList);
 
         isRefresh = true;
-        if (!waitGo.isGo()) waitGo.go();
+        renderThreadWaitGo.go();
     }
 
 
@@ -313,7 +313,7 @@ public class TransparentScribbleView extends SurfaceView {
             return;
         }
         isRefresh = true;
-        if (!waitGo.isGo()) waitGo.go();
+        renderThreadWaitGo.go();
     }
 
 }
