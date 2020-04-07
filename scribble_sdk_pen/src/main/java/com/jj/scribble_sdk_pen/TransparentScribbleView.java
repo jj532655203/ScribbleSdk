@@ -202,7 +202,7 @@ public class TransparentScribbleView extends SurfaceView {
         });
     }
 
-    void stopRenderThread() {
+    synchronized void stopRenderThread() {
         if (!isRenderRunning) return;
         is2StopRender = true;
         renderThreadWaitGo.go();
