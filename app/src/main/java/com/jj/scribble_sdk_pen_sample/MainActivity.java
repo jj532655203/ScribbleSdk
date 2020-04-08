@@ -3,6 +3,7 @@ package com.jj.scribble_sdk_pen_sample;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.SurfaceHolder;
+import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -33,6 +34,8 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void surfaceDestroyed(SurfaceHolder holder) {
             Log.d(TAG, "surfaceDestroyed");
+
+            surfaceView.setRawDrawingEnable(false);
 
         }
     };
@@ -72,4 +75,9 @@ public class MainActivity extends AppCompatActivity {
         surfaceView.getHolder().addCallback(holderCallBack);
 
     }
+
+    public void clearScreen(View view) {
+        surfaceView.clearScreenAfterSurfaceViewCreated();
+    }
+
 }

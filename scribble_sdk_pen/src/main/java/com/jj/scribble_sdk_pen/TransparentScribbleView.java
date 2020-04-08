@@ -19,22 +19,24 @@ import com.jj.scribble_sdk_pen.intf.RawInputCallback;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class TransparentScribbleView extends SurfaceView {
 
     private static final String TAG = "TransparentScribbleView";
-    private static final int FRAME_CACHE_SIZE = 32;
-    private WaitGo renderThreadWaitGo = new WaitGo();
-    private boolean is2StopRender;
-    private boolean isRenderRunning;
-    private boolean isRefresh;
+    private static final int FRAME_CACHE_SIZE = 48;
+    private WaitGo renderWaitGo = new WaitGo();
+    private WaitGo eraserWaitGo = new WaitGo();
+    private boolean is2StopRender, is2StopEraser;
+    private boolean isRenderRunning, isEraserRunning;
+    private boolean isRendering, isErase;
     private Paint renderPaint;
     private float strokeWidth = 12f;
     private int strokeColor = Color.BLACK;
     private RawInputCallback rawInputCallback;
     private static final int ACTIVE_POINTER_ID = 0;
     private TouchPointList activeTouchPointList = new TouchPointList();
-    private ConcurrentLinkedDeque<TouchPointList> last16PathQueue = new ConcurrentLinkedDeque<>();
+    private ConcurrentLinkedQueue<TouchPointList> last16PathQueue = new ConcurrentLinkedQueue<>();
 
     public int getStrokeColor() {
         return strokeColor;
@@ -156,11 +158,11 @@ public class TransparentScribbleView extends SurfaceView {
 
                     Canvas canvas = null;
                     try {
-                        if (!isRefresh) {
-                            renderThreadWaitGo.wait1();
+                        if (!isRendering) {
+                            renderWaitGo.wait1();
                             continue;
                         }
-                        isRefresh = false;
+                        isRendering = false;
 
 
                         long startDoRenderTime = System.currentTimeMillis();
@@ -202,10 +204,65 @@ public class TransparentScribbleView extends SurfaceView {
         });
     }
 
+
+    synchronized void startEraserThread() {
+        is2StopEraser = false;
+        if (isEraserRunning) {
+            return;
+        }
+        isEraserRunning = true;
+
+        JobExecutor.getInstance().execute(new Runnable() {
+            @Override
+            public void run() {
+
+                Log.d(TAG, "startEraserThread ThreadName=" + Thread.currentThread().getName());
+
+                while (!is2StopEraser) {
+
+                    try {
+                        if (!isErase) {
+                            eraserWaitGo.wait1();
+                            continue;
+                        }
+                        isErase = false;
+
+                        long millis = System.currentTimeMillis();
+
+                        for (int i = 0; i < FRAME_CACHE_SIZE; i++) {
+                            Canvas canvas = getHolder().lockCanvas();
+                            if (canvas != null) {
+                                canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+                                getHolder().unlockCanvasAndPost(canvas);
+                            } else {
+                                Log.e(TAG, "clearScreenAfterSurfaceViewCreated 失败!");
+                            }
+                        }
+
+                        Log.d(TAG, "doErase consuming time " + (System.currentTimeMillis() - millis));
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                }
+
+                isRenderRunning = false;
+                Log.d(TAG, "startEraserThread 停止擦除线程成功 ThreadName=" + Thread.currentThread().getName());
+            }
+        });
+    }
+
     synchronized void stopRenderThread() {
         if (!isRenderRunning) return;
         is2StopRender = true;
-        renderThreadWaitGo.go();
+        renderWaitGo.go();
+    }
+
+    synchronized void stopEraserThread() {
+        if (!isEraserRunning) return;
+        is2StopEraser = true;
+        eraserWaitGo.go();
     }
 
     private void initRenderPaint() {
@@ -255,14 +312,14 @@ public class TransparentScribbleView extends SurfaceView {
         Log.d(TAG, "renderPath start");
 
         if (last16PathQueue.size() == FRAME_CACHE_SIZE) {
-            last16PathQueue.removeFirst();
+            last16PathQueue.poll();
         }
         TouchPointList lastTouchPointList = new TouchPointList(activeTouchPointList.size());
         lastTouchPointList.addAll(activeTouchPointList);
         last16PathQueue.add(lastTouchPointList);
 
-        isRefresh = true;
-        renderThreadWaitGo.go();
+        isRendering = true;
+        renderWaitGo.go();
     }
 
 
@@ -276,9 +333,11 @@ public class TransparentScribbleView extends SurfaceView {
 
         if (enable) {
             startRenderThread();
+            startEraserThread();
             reproduceScribblesAfterSurfaceRecreated();
         } else {
             stopRenderThread();
+            stopEraserThread();
         }
     }
 
@@ -292,14 +351,13 @@ public class TransparentScribbleView extends SurfaceView {
         last16PathQueue.clear();
         activeTouchPointList.getPoints().clear();
 
-        Canvas canvas = getHolder().lockCanvas();
-        if (canvas != null) {
-            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-            getHolder().unlockCanvasAndPost(canvas);
-        } else {
-            Log.e(TAG, "clearScreenAfterSurfaceViewCreated 失败!");
-        }
+        clearScreen();
 
+    }
+
+    private void clearScreen() {
+        isErase = true;
+        eraserWaitGo.go();
     }
 
     /**
@@ -312,8 +370,8 @@ public class TransparentScribbleView extends SurfaceView {
             Log.e(TAG, "reproduceScribblesAfterSurfaceRecreated --> need setRawDrawingEnable(true) first!");
             return;
         }
-        isRefresh = true;
-        renderThreadWaitGo.go();
+        isRendering = true;
+        renderWaitGo.go();
     }
 
 }
