@@ -17,8 +17,9 @@ import com.jj.scribble_sdk_pen.data.TouchPoint;
 import com.jj.scribble_sdk_pen.data.TouchPointList;
 import com.jj.scribble_sdk_pen.intf.RawInputCallback;
 
+import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class TransparentScribbleView extends SurfaceView {
@@ -37,6 +38,7 @@ public class TransparentScribbleView extends SurfaceView {
     private static final int ACTIVE_POINTER_ID = 0;
     private TouchPointList activeTouchPointList = new TouchPointList();
     private ConcurrentLinkedQueue<TouchPointList> last16PathQueue = new ConcurrentLinkedQueue<>();
+    private List<TouchPointList> totalPathList = new ArrayList<>();
 
     public int getStrokeColor() {
         return strokeColor;
@@ -74,6 +76,24 @@ public class TransparentScribbleView extends SurfaceView {
         setZOrderOnTop(true);
         SurfaceHolder holder = getHolder();
         holder.setFormat(PixelFormat.TRANSLUCENT);
+        holder.addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+                //surfaceView重新Created,需要将所有笔迹重新绘制
+                if (totalPathList == null || totalPathList.isEmpty()) return;
+
+                new Thread(new RedrawTotalPathRunnable(new WeakReference<>(TransparentScribbleView.this))).start();
+
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+            }
+        });
 
         initRenderPaint();
 
@@ -109,6 +129,10 @@ public class TransparentScribbleView extends SurfaceView {
 
                 activeTouchPointList.add(activeTouchPoint);
                 renderPath();
+
+                TouchPointList lastTouchPointList = new TouchPointList(activeTouchPointList.size());
+                lastTouchPointList.addAll(activeTouchPointList);
+                totalPathList.add(lastTouchPointList);
 
                 TouchPointList touchPointList = new TouchPointList();
                 touchPointList.addAll(activeTouchPointList);
@@ -372,6 +396,36 @@ public class TransparentScribbleView extends SurfaceView {
         }
         isRendering = true;
         renderWaitGo.go();
+    }
+
+    private static class RedrawTotalPathRunnable implements Runnable {
+        private WeakReference<TransparentScribbleView> weakReference;
+
+        RedrawTotalPathRunnable(WeakReference<TransparentScribbleView> weakReference) {
+            this.weakReference = weakReference;
+        }
+
+        @Override
+        public void run() {
+            if (weakReference == null) return;
+
+            for (int i = 0; i < FRAME_CACHE_SIZE; i++) {
+                if (weakReference.get() == null) return;
+
+                Canvas canvas = weakReference.get().getHolder().lockCanvas();
+                for (TouchPointList lastPath : weakReference.get().totalPathList) {
+                    if (lastPath.size() == 0) {
+                        continue;
+                    }
+
+                    if (weakReference.get() == null) return;
+                    weakReference.get().addAPath2Canvas(lastPath.getPoints(), canvas);
+                }
+
+                weakReference.get().getHolder().unlockCanvasAndPost(canvas);
+            }
+
+        }
     }
 
 }
