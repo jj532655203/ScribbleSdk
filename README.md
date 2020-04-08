@@ -1,4 +1,3 @@
-# ScribbleSdk-Pen
 
 apk下载地址:https://phone-love-piano-public-ro.oss-cn-shenzhen.aliyuncs.com/demo-apk/scribble_sdk_debug_0403.apk
 
@@ -21,7 +20,7 @@ apk下载地址:https://phone-love-piano-public-ro.oss-cn-shenzhen.aliyuncs.com/
 buildscript.repositories{maven { url "https://jitpack.io" }}
 
 需要使用可书写透明层的module的gradle下:
-implementation 'com.github.jj532655203:ScribbleSdkPen:1.0.10'
+implementation 'com.github.jj532655203:ScribbleSdk:1.1.5'
 
 ###  2.布局
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
