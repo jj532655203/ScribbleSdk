@@ -305,13 +305,13 @@ public class TransparentScribbleView extends SurfaceView {
     }
 
     /**
-     * start scribble thread when onResume!stop it when onPause!
+     * start scribble thread when SurfaceCreated/SurfaceReCreated!stop it when onPause!
      *
      * @param enable true to start,otherwise to top.
      */
-    public synchronized void setRawDrawingEnable(boolean enable) {
+    public synchronized void setRawDrawingEnableAfterSurfaceCreated(boolean enable) {
         if (enable == mRawDrawingEnable) return;
-        Log.d(TAG, "setRawDrawingEnable enable=" + enable);
+        Log.d(TAG, "setRawDrawingEnableAfterSurfaceCreated enable=" + enable);
 
         mRawDrawingEnable = enable;
 
@@ -344,16 +344,27 @@ public class TransparentScribbleView extends SurfaceView {
     }
 
     /**
-     * reproduce scribbles after surface recreate,but need setRawDrawingEnable(true) first;
-     * setRawDrawingEnable(true) is a perfect trigger,since at the time is onResumed(as well as surface created)
+     * reproduce scribbles after surface recreate,but need setRawDrawingEnableAfterSurfaceCreated(true) first;
+     * setRawDrawingEnableAfterSurfaceCreated(true) is a perfect trigger,since at the time is onResumed(as well as surface created)
      */
     public void reproduceScribblesAfterSurfaceRecreated() {
         Log.d(TAG, "reproduceScribblesAfterSurfaceRecreated ");
         if (mRenderHandler == null) {
-            Log.e(TAG, "reproduceScribblesAfterSurfaceRecreated --> need setRawDrawingEnable(true) first!");
+            Log.e(TAG, "reproduceScribblesAfterSurfaceRecreated --> need setRawDrawingEnableAfterSurfaceCreated(true) first!");
             return;
         }
-        mRenderHandler.sendEmptyMessage(MSG_RENDER_PATH);
+
+        post(new Runnable() {
+            @Override
+            public void run() {
+
+                Rect dstRect = new Rect(0, 0, getWidth(), getHeight());
+                Canvas canvas = getHolder().lockCanvas();
+                canvas.drawBitmap(mBitmap, null, dstRect, renderPaint);
+                getHolder().unlockCanvasAndPost(canvas);
+
+            }
+        });
     }
 
     @Override

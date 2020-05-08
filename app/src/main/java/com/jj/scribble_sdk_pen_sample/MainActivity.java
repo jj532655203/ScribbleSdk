@@ -35,7 +35,7 @@ public class MainActivity extends AppCompatActivity {
         public void surfaceDestroyed(SurfaceHolder holder) {
             Log.d(TAG, "surfaceDestroyed");
 
-            surfaceView.setRawDrawingEnable(false);
+            surfaceView.setRawDrawingEnableAfterSurfaceCreated(false);
 
         }
     };
@@ -83,7 +83,7 @@ public class MainActivity extends AppCompatActivity {
         surfaceView.post(new Runnable() {
             @Override
             public void run() {
-                surfaceView.setRawDrawingEnable(true);
+                surfaceView.setRawDrawingEnableAfterSurfaceCreated(true);
             }
         });
     }
@@ -92,7 +92,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         Log.d(TAG, "onPause");
-        surfaceView.setRawDrawingEnable(false);
+        surfaceView.setRawDrawingEnableAfterSurfaceCreated(false);
     }
 
     public void clearScreen(View view) {
