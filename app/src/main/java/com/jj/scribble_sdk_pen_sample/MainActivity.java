@@ -21,7 +21,7 @@ public class MainActivity extends AppCompatActivity {
         public void surfaceCreated(SurfaceHolder holder) {
             Log.d(TAG, "surfaceCreated");
 
-            surfaceView.setRawInputCallback(inputCallBack).setRawDrawingEnable(true);
+            surfaceView.setRawInputCallback(inputCallBack);
 
         }
 
@@ -74,6 +74,25 @@ public class MainActivity extends AppCompatActivity {
         surfaceView = findViewById(R.id.surface_view);
         surfaceView.getHolder().addCallback(holderCallBack);
 
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Log.d(TAG, "onResume");
+        surfaceView.post(new Runnable() {
+            @Override
+            public void run() {
+                surfaceView.setRawDrawingEnable(true);
+            }
+        });
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        Log.d(TAG, "onPause");
+        surfaceView.setRawDrawingEnable(false);
     }
 
     public void clearScreen(View view) {

@@ -7,6 +7,8 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
+import android.os.HandlerThread;
+import android.os.Message;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -18,18 +20,17 @@ import com.jj.scribble_sdk_pen.data.TouchPointList;
 import com.jj.scribble_sdk_pen.intf.RawInputCallback;
 
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class TransparentScribbleView extends SurfaceView {
 
     private static final String TAG = "TransparentScribbleView";
     private static final int FRAME_CACHE_SIZE = 48;
-    private WaitGo renderWaitGo = new WaitGo();
+    private static final int MSG_RENDER_PATH = 101;
     private WaitGo eraserWaitGo = new WaitGo();
     private boolean is2StopRender, is2StopEraser;
-    private boolean isRenderRunning, isEraserRunning;
-    private boolean isRendering, isErase;
+    private boolean isEraserRunning;
+    private boolean isErase;
     private Paint renderPaint;
     private float strokeWidth = 12f;
     private int strokeColor = Color.BLACK;
@@ -37,6 +38,9 @@ public class TransparentScribbleView extends SurfaceView {
     private static final int ACTIVE_POINTER_ID = 0;
     private TouchPointList activeTouchPointList = new TouchPointList();
     private ConcurrentLinkedQueue<TouchPointList> last16PathQueue = new ConcurrentLinkedQueue<>();
+    private HandlerThread mRenderThread;
+    private android.os.Handler mRenderHandler;
+    private volatile boolean mRawDrawingEnable;
 
     public int getStrokeColor() {
         return strokeColor;
@@ -141,71 +145,60 @@ public class TransparentScribbleView extends SurfaceView {
     }
 
 
-    synchronized void startRenderThread() {
+    void startRenderThread() {
         is2StopRender = false;
-        if (isRenderRunning) {
-            return;
-        }
-        isRenderRunning = true;
-
-        JobExecutor.getInstance().execute(new Runnable() {
+        mRenderThread = new HandlerThread("RenderThread");
+        mRenderThread.start();
+        mRenderHandler = new android.os.Handler(mRenderThread.getLooper()) {
             @Override
-            public void run() {
+            public void handleMessage(Message msg) {
+                super.handleMessage(msg);
+                if (msg.what != MSG_RENDER_PATH) return;
 
-                Log.d(TAG, "startRenderThread ThreadName=" + Thread.currentThread().getName());
-
-                while (!is2StopRender) {
-
-                    Canvas canvas = null;
-                    try {
-                        if (!isRendering) {
-                            renderWaitGo.wait1();
-                            continue;
-                        }
-                        isRendering = false;
-
-
-                        long startDoRenderTime = System.currentTimeMillis();
-
-                        if (getHolder() != null && getHolder().getSurface().isValid()) {
-
-                            canvas = getHolder().lockCanvas();
-
-                            //由于双缓冲机制,得绘制最近几根笔迹
-                            for (TouchPointList lastPath : last16PathQueue) {
-                                if (lastPath.size() == 0) {
-                                    continue;
-                                }
-
-                                if (is2StopRender) break;
-
-                                addAPath2Canvas(lastPath.getPoints(), canvas);
-                            }
-
-                            Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime) + "?last16PathQueue.size=" + last16PathQueue.size());
-
-                        } else {
-                            Log.e(TAG, "surfaceView released return");
-                        }
-
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    } finally {
-                        if (canvas != null) {
-                            getHolder().unlockCanvasAndPost(canvas);
-                        }
-                    }
-
+                if (last16PathQueue.isEmpty()) {
+                    Log.d(TAG, "handleMessage last16PathQueue队列处理完毕 return");
+                    removeCallbacksAndMessages(null);
+                    return;
                 }
 
-                isRenderRunning = false;
-                Log.d(TAG, "startRenderThread 停止笔划渲染线程成功 ThreadName=" + Thread.currentThread().getName());
+                Canvas canvas = null;
+                try {
+
+                    long startDoRenderTime = System.currentTimeMillis();
+
+                    if (getHolder() != null && getHolder().getSurface().isValid()) {
+
+                        canvas = getHolder().lockCanvas();
+
+                        //由于双缓冲机制,得绘制最近几根笔迹
+                        for (TouchPointList lastPath : last16PathQueue) {
+                            if (lastPath.size() == 0) {
+                                continue;
+                            }
+
+                            if (is2StopRender) break;
+
+                            addAPath2Canvas(lastPath.getPoints(), canvas);
+                        }
+
+                        Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime) + "?last16PathQueue.size=" + last16PathQueue.size());
+
+                    } else {
+                        Log.e(TAG, "surfaceView released return");
+                    }
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                } finally {
+                    if (canvas != null) {
+                        getHolder().unlockCanvasAndPost(canvas);
+                    }
+                }
             }
-        });
+        };
     }
 
-
-    synchronized void startEraserThread() {
+    void startEraserThread() {
         is2StopEraser = false;
         if (isEraserRunning) {
             return;
@@ -247,19 +240,17 @@ public class TransparentScribbleView extends SurfaceView {
 
                 }
 
-                isRenderRunning = false;
                 Log.d(TAG, "startEraserThread 停止擦除线程成功 ThreadName=" + Thread.currentThread().getName());
             }
         });
     }
 
-    synchronized void stopRenderThread() {
-        if (!isRenderRunning) return;
+    void stopRenderThread() {
+        if (mRenderThread != null) mRenderThread.quit();
         is2StopRender = true;
-        renderWaitGo.go();
     }
 
-    synchronized void stopEraserThread() {
+    void stopEraserThread() {
         if (!isEraserRunning) return;
         is2StopEraser = true;
         eraserWaitGo.go();
@@ -318,18 +309,23 @@ public class TransparentScribbleView extends SurfaceView {
         lastTouchPointList.addAll(activeTouchPointList);
         last16PathQueue.add(lastTouchPointList);
 
-        isRendering = true;
-        renderWaitGo.go();
+        mRenderHandler.sendEmptyMessage(MSG_RENDER_PATH);
     }
 
+    public boolean getRawDrawingEnable() {
+        return mRawDrawingEnable;
+    }
 
     /**
      * start scribble thread when onResume!stop it when onPause!
      *
      * @param enable true to start,otherwise to top.
      */
-    public void setRawDrawingEnable(boolean enable) {
+    public synchronized void setRawDrawingEnable(boolean enable) {
+        if (enable == mRawDrawingEnable) return;
         Log.d(TAG, "setRawDrawingEnable enable=" + enable);
+
+        mRawDrawingEnable = enable;
 
         if (enable) {
             startRenderThread();
@@ -366,12 +362,11 @@ public class TransparentScribbleView extends SurfaceView {
      */
     public void reproduceScribblesAfterSurfaceRecreated() {
         Log.d(TAG, "reproduceScribblesAfterSurfaceRecreated ");
-        if (!isRenderRunning) {
+        if (mRenderHandler == null) {
             Log.e(TAG, "reproduceScribblesAfterSurfaceRecreated --> need setRawDrawingEnable(true) first!");
             return;
         }
-        isRendering = true;
-        renderWaitGo.go();
+        mRenderHandler.sendEmptyMessage(MSG_RENDER_PATH);
     }
 
 }
