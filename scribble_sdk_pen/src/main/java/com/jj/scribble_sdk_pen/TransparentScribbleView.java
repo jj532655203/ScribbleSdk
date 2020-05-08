@@ -7,6 +7,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
+import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
 import android.util.AttributeSet;
@@ -27,10 +28,7 @@ public class TransparentScribbleView extends SurfaceView {
     private static final String TAG = "TransparentScribbleView";
     private static final int FRAME_CACHE_SIZE = 48;
     private static final int MSG_RENDER_PATH = 101;
-    private WaitGo eraserWaitGo = new WaitGo();
-    private boolean is2StopRender, is2StopEraser;
-    private boolean isEraserRunning;
-    private boolean isErase;
+    private static final int MSG_ERASE_PATH = 102;
     private Paint renderPaint;
     private float strokeWidth = 12f;
     private int strokeColor = Color.BLACK;
@@ -38,8 +36,9 @@ public class TransparentScribbleView extends SurfaceView {
     private static final int ACTIVE_POINTER_ID = 0;
     private TouchPointList activeTouchPointList = new TouchPointList();
     private ConcurrentLinkedQueue<TouchPointList> last16PathQueue = new ConcurrentLinkedQueue<>();
-    private HandlerThread mRenderThread;
-    private android.os.Handler mRenderHandler;
+    private HandlerThread mRenderThread, mEraserThread;
+    private android.os.Handler mRenderHandler, mEraserHandler;
+    private boolean is2StopRender, is2StopEraser;
     private volatile boolean mRawDrawingEnable;
 
     public int getStrokeColor() {
@@ -200,49 +199,33 @@ public class TransparentScribbleView extends SurfaceView {
 
     void startEraserThread() {
         is2StopEraser = false;
-        if (isEraserRunning) {
-            return;
-        }
-        isEraserRunning = true;
-
-        JobExecutor.getInstance().execute(new Runnable() {
+        mEraserThread = new HandlerThread("EraserThread");
+        mEraserThread.start();
+        mEraserHandler = new Handler(mEraserThread.getLooper()) {
             @Override
-            public void run() {
+            public void handleMessage(Message msg) {
+                super.handleMessage(msg);
+                if (msg.what != MSG_ERASE_PATH) return;
 
-                Log.d(TAG, "startEraserThread ThreadName=" + Thread.currentThread().getName());
+                long millis = System.currentTimeMillis();
 
-                while (!is2StopEraser) {
+                for (int i = 0; i < FRAME_CACHE_SIZE; i++) {
 
-                    try {
-                        if (!isErase) {
-                            eraserWaitGo.wait1();
-                            continue;
-                        }
-                        isErase = false;
+                    if (is2StopEraser) break;
 
-                        long millis = System.currentTimeMillis();
-
-                        for (int i = 0; i < FRAME_CACHE_SIZE; i++) {
-                            Canvas canvas = getHolder().lockCanvas();
-                            if (canvas != null) {
-                                canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-                                getHolder().unlockCanvasAndPost(canvas);
-                            } else {
-                                Log.e(TAG, "clearScreenAfterSurfaceViewCreated 失败!");
-                            }
-                        }
-
-                        Log.d(TAG, "doErase consuming time " + (System.currentTimeMillis() - millis));
-
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                    Canvas canvas = getHolder().lockCanvas();
+                    if (canvas != null) {
+                        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+                        getHolder().unlockCanvasAndPost(canvas);
+                    } else {
+                        Log.e(TAG, "clearScreenAfterSurfaceViewCreated 失败!");
                     }
-
                 }
 
-                Log.d(TAG, "startEraserThread 停止擦除线程成功 ThreadName=" + Thread.currentThread().getName());
+                Log.d(TAG, "doErase consuming time " + (System.currentTimeMillis() - millis));
+
             }
-        });
+        };
     }
 
     void stopRenderThread() {
@@ -251,9 +234,8 @@ public class TransparentScribbleView extends SurfaceView {
     }
 
     void stopEraserThread() {
-        if (!isEraserRunning) return;
+        if (mEraserThread != null) mEraserThread.quit();
         is2StopEraser = true;
-        eraserWaitGo.go();
     }
 
     private void initRenderPaint() {
@@ -352,8 +334,7 @@ public class TransparentScribbleView extends SurfaceView {
     }
 
     private void clearScreen() {
-        isErase = true;
-        eraserWaitGo.go();
+        if (mEraserHandler != null) mEraserHandler.sendEmptyMessage(MSG_ERASE_PATH);
     }
 
     /**
