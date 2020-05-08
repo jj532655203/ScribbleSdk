@@ -1,12 +1,14 @@
 package com.jj.scribble_sdk_pen;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
@@ -20,13 +22,14 @@ import com.jj.scribble_sdk_pen.data.TouchPoint;
 import com.jj.scribble_sdk_pen.data.TouchPointList;
 import com.jj.scribble_sdk_pen.intf.RawInputCallback;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class TransparentScribbleView extends SurfaceView {
 
     private static final String TAG = "TransparentScribbleView";
-    private static final int FRAME_CACHE_SIZE = 48;
+    private static final int FRAME_CACHE_SIZE = 16;
     private static final int MSG_RENDER_PATH = 101;
     private static final int MSG_ERASE_PATH = 102;
     private Paint renderPaint;
@@ -35,11 +38,13 @@ public class TransparentScribbleView extends SurfaceView {
     private RawInputCallback rawInputCallback;
     private static final int ACTIVE_POINTER_ID = 0;
     private TouchPointList activeTouchPointList = new TouchPointList();
-    private ConcurrentLinkedQueue<TouchPointList> last16PathQueue = new ConcurrentLinkedQueue<>();
+    private ConcurrentLinkedQueue<TouchPointList> newPathListQueue = new ConcurrentLinkedQueue<>();
     private HandlerThread mRenderThread, mEraserThread;
     private android.os.Handler mRenderHandler, mEraserHandler;
-    private boolean is2StopRender, is2StopEraser;
+    private boolean is2StopRender;
     private volatile boolean mRawDrawingEnable;
+    private Bitmap mBitmap;
+    private Canvas mCanvas;
 
     public int getStrokeColor() {
         return strokeColor;
@@ -113,8 +118,12 @@ public class TransparentScribbleView extends SurfaceView {
                 activeTouchPointList.add(activeTouchPoint);
                 renderPath();
 
-                TouchPointList touchPointList = new TouchPointList();
+                TouchPointList touchPointList = new TouchPointList(activeTouchPointList.size());
                 touchPointList.addAll(activeTouchPointList);
+
+                TouchPointList touchPointList2 = new TouchPointList(activeTouchPointList.size());
+                touchPointList2.addAll(activeTouchPointList);
+                newPathListQueue.add(touchPointList2);
 
                 activeTouchPointList.getPoints().clear();
 
@@ -154,8 +163,8 @@ public class TransparentScribbleView extends SurfaceView {
                 super.handleMessage(msg);
                 if (msg.what != MSG_RENDER_PATH) return;
 
-                if (last16PathQueue.isEmpty()) {
-                    Log.d(TAG, "handleMessage last16PathQueue队列处理完毕 return");
+                if (newPathListQueue.isEmpty() && activeTouchPointList.getPoints().isEmpty()) {
+                    Log.d(TAG, "handleMessage 队列处理完毕 return");
                     removeCallbacksAndMessages(null);
                     return;
                 }
@@ -169,18 +178,28 @@ public class TransparentScribbleView extends SurfaceView {
 
                         canvas = getHolder().lockCanvas();
 
-                        //由于双缓冲机制,得绘制最近几根笔迹
-                        for (TouchPointList lastPath : last16PathQueue) {
-                            if (lastPath.size() == 0) {
-                                continue;
-                            }
+                        //将新笔迹绘制到bitmap中
+                        for (int i = 0; i < newPathListQueue.size(); i++) {
+                            if (is2StopRender) return;
 
-                            if (is2StopRender) break;
+                            TouchPointList poll = newPathListQueue.poll();
+                            if (poll == null) continue;
 
-                            addAPath2Canvas(lastPath.getPoints(), canvas);
+                            addAPath2Canvas(poll.getPoints(), mCanvas);
                         }
 
-                        Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime) + "?last16PathQueue.size=" + last16PathQueue.size());
+                        //将活动笔迹绘制到bitmap中
+                        ArrayList<TouchPoint> activePath = new ArrayList<>(activeTouchPointList.getPoints());
+                        addAPath2Canvas(activePath, mCanvas);
+                        if (is2StopRender) return;
+
+                        //将bitmap绘制到canvas中
+                        Rect dstRect = new Rect(0, 0, getWidth(), getHeight());
+                        canvas.drawBitmap(mBitmap, null, dstRect, renderPaint);
+                        if (is2StopRender) return;
+
+
+                        Log.d(TAG, "doRender consume time=" + (System.currentTimeMillis() - startDoRenderTime));
 
                     } else {
                         Log.e(TAG, "surfaceView released return");
@@ -198,7 +217,6 @@ public class TransparentScribbleView extends SurfaceView {
     }
 
     void startEraserThread() {
-        is2StopEraser = false;
         mEraserThread = new HandlerThread("EraserThread");
         mEraserThread.start();
         mEraserHandler = new Handler(mEraserThread.getLooper()) {
@@ -209,17 +227,13 @@ public class TransparentScribbleView extends SurfaceView {
 
                 long millis = System.currentTimeMillis();
 
+                mBitmap.eraseColor(Color.TRANSPARENT);
+
+                //由于surfaceView的双缓冲机制
                 for (int i = 0; i < FRAME_CACHE_SIZE; i++) {
-
-                    if (is2StopEraser) break;
-
                     Canvas canvas = getHolder().lockCanvas();
-                    if (canvas != null) {
-                        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-                        getHolder().unlockCanvasAndPost(canvas);
-                    } else {
-                        Log.e(TAG, "clearScreenAfterSurfaceViewCreated 失败!");
-                    }
+                    canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+                    getHolder().unlockCanvasAndPost(canvas);
                 }
 
                 Log.d(TAG, "doErase consuming time " + (System.currentTimeMillis() - millis));
@@ -235,7 +249,6 @@ public class TransparentScribbleView extends SurfaceView {
 
     void stopEraserThread() {
         if (mEraserThread != null) mEraserThread.quit();
-        is2StopEraser = true;
     }
 
     private void initRenderPaint() {
@@ -284,13 +297,6 @@ public class TransparentScribbleView extends SurfaceView {
     private void renderPath() {
         Log.d(TAG, "renderPath start");
 
-        if (last16PathQueue.size() == FRAME_CACHE_SIZE) {
-            last16PathQueue.poll();
-        }
-        TouchPointList lastTouchPointList = new TouchPointList(activeTouchPointList.size());
-        lastTouchPointList.addAll(activeTouchPointList);
-        last16PathQueue.add(lastTouchPointList);
-
         mRenderHandler.sendEmptyMessage(MSG_RENDER_PATH);
     }
 
@@ -326,7 +332,7 @@ public class TransparentScribbleView extends SurfaceView {
     public void clearScreenAfterSurfaceViewCreated() {
         Log.d(TAG, "clearScreenAfterSurfaceViewCreated ");
 
-        last16PathQueue.clear();
+        newPathListQueue.clear();
         activeTouchPointList.getPoints().clear();
 
         clearScreen();
@@ -350,4 +356,26 @@ public class TransparentScribbleView extends SurfaceView {
         mRenderHandler.sendEmptyMessage(MSG_RENDER_PATH);
     }
 
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        Log.d(TAG, "onAttachedToWindow");
+        post(new Runnable() {
+            @Override
+            public void run() {
+                mBitmap = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
+                mCanvas = new Canvas(mBitmap);
+            }
+        });
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        Log.d(TAG, "onDetachedFromWindow");
+        if (mBitmap != null && !mBitmap.isRecycled()) {
+            mBitmap.recycle();
+            mBitmap = null;
+        }
+    }
 }
