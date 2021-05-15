@@ -2,7 +2,6 @@ package com.jj.scribble_sdk_pen_sample;
 
 import android.os.Bundle;
 import android.util.Log;
-import android.view.SurfaceHolder;
 import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -15,30 +14,6 @@ import com.jj.scribble_sdk_pen.intf.RawInputCallback;
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
-
-    private SurfaceHolder.Callback holderCallBack = new SurfaceHolder.Callback() {
-        @Override
-        public void surfaceCreated(SurfaceHolder holder) {
-            Log.d(TAG, "surfaceCreated");
-
-            surfaceView.setRawInputCallback(inputCallBack);
-
-        }
-
-        @Override
-        public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-            Log.d(TAG, "surfaceChanged");
-
-        }
-
-        @Override
-        public void surfaceDestroyed(SurfaceHolder holder) {
-            Log.d(TAG, "surfaceDestroyed");
-
-            surfaceView.setRawDrawingEnableAfterSurfaceCreated(false);
-
-        }
-    };
     private RawInputCallback inputCallBack = new RawInputCallback() {
         @Override
         public void onBeginRawDrawing(TouchPoint var2) {
@@ -72,27 +47,8 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         surfaceView = findViewById(R.id.surface_view);
-        surfaceView.getHolder().addCallback(holderCallBack);
+        surfaceView.setRawInputCallback(inputCallBack);
 
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        Log.d(TAG, "onResume");
-        surfaceView.post(new Runnable() {
-            @Override
-            public void run() {
-                surfaceView.setRawDrawingEnableAfterSurfaceCreated(true);
-            }
-        });
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        Log.d(TAG, "onPause");
-        surfaceView.setRawDrawingEnableAfterSurfaceCreated(false);
     }
 
     public void clearScreen(View view) {

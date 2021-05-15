@@ -18,15 +18,21 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
+import androidx.lifecycle.Lifecycle;
+import androidx.lifecycle.LifecycleObserver;
+import androidx.lifecycle.LifecycleOwner;
+import androidx.lifecycle.OnLifecycleEvent;
+
 import com.jj.scribble_sdk_pen.data.TouchPoint;
 import com.jj.scribble_sdk_pen.data.TouchPointList;
+import com.jj.scribble_sdk_pen.intf.ISurfaceViewOperable;
 import com.jj.scribble_sdk_pen.intf.RawInputCallback;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
-public class TransparentScribbleView extends SurfaceView {
+public class TransparentScribbleView extends SurfaceView implements ISurfaceViewOperable, LifecycleObserver {
 
     private static final String TAG = "TransparentScribbleView";
     private static final int FRAME_CACHE_SIZE = 16;
@@ -40,11 +46,30 @@ public class TransparentScribbleView extends SurfaceView {
     private TouchPointList activeTouchPointList = new TouchPointList();
     private ConcurrentLinkedQueue<TouchPointList> newPathListQueue = new ConcurrentLinkedQueue<>();
     private HandlerThread mRenderThread, mEraserThread;
-    private android.os.Handler mRenderHandler, mEraserHandler;
+    private Handler mRenderHandler, mEraserHandler;
     private boolean is2StopRender;
     private volatile boolean mRawDrawingEnable;
+    private Bitmap mBgBitmap;
     private Bitmap mBitmap;
     private Canvas mCanvas;
+    private SurfaceHolder.Callback holderCallBack = new SurfaceHolder.Callback() {
+        @Override
+        public void surfaceCreated(SurfaceHolder holder) {
+            Log.d(TAG, "surfaceCreated");
+            setRawDrawingEnableAfterSurfaceCreated(true);
+        }
+
+        @Override
+        public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            Log.d(TAG, "surfaceChanged");
+        }
+
+        @Override
+        public void surfaceDestroyed(SurfaceHolder holder) {
+            Log.d(TAG, "surfaceDestroyed");
+            setRawDrawingEnableAfterSurfaceCreated(false);
+        }
+    };
 
     public int getStrokeColor() {
         return strokeColor;
@@ -62,9 +87,8 @@ public class TransparentScribbleView extends SurfaceView {
         this.strokeWidth = strokeWidth;
     }
 
-    public TransparentScribbleView setRawInputCallback(RawInputCallback rawInputCallback) {
+    public void setRawInputCallback(RawInputCallback rawInputCallback) {
         this.rawInputCallback = rawInputCallback;
-        return this;
     }
 
     public TransparentScribbleView(Context context) {
@@ -77,6 +101,7 @@ public class TransparentScribbleView extends SurfaceView {
 
     public TransparentScribbleView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+        ((LifecycleOwner) getContext()).getLifecycle().addObserver(this);
 
         setBackgroundResource(R.color.transparent);
         setZOrderOnTop(true);
@@ -84,9 +109,7 @@ public class TransparentScribbleView extends SurfaceView {
         holder.setFormat(PixelFormat.TRANSLUCENT);
 
         initRenderPaint();
-
     }
-
 
     /**
      * 监听surfaceView的motionEvent
@@ -97,13 +120,11 @@ public class TransparentScribbleView extends SurfaceView {
         Log.d(TAG, "onTouch");
 
         TouchPoint activeTouchPoint = new TouchPoint(event.getX(), event.getY());
+        activeTouchPoint.setTimestamp(System.currentTimeMillis());
 
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN: {
-
-                activeTouchPointList.getPoints().clear();
-                activeTouchPointList.add(activeTouchPoint);
-                renderPath();
+                motionDownPoint(activeTouchPoint);
 
                 if (rawInputCallback != null) rawInputCallback.onBeginRawDrawing(activeTouchPoint);
             }
@@ -115,23 +136,15 @@ public class TransparentScribbleView extends SurfaceView {
                     break;
                 }
 
-                activeTouchPointList.add(activeTouchPoint);
-                renderPath();
-
-                TouchPointList touchPointList = new TouchPointList(activeTouchPointList.size());
-                touchPointList.addAll(activeTouchPointList);
-
-                TouchPointList touchPointList2 = new TouchPointList(activeTouchPointList.size());
-                touchPointList2.addAll(activeTouchPointList);
-                newPathListQueue.add(touchPointList2);
-
-                activeTouchPointList.getPoints().clear();
-
                 if (rawInputCallback != null) {
+                    TouchPointList touchPointList = new TouchPointList(activeTouchPointList.size() + 1);
+                    touchPointList.addAll(activeTouchPointList);
+                    touchPointList.add(activeTouchPoint);
                     rawInputCallback.onRawDrawingTouchPointListReceived(touchPointList);
 
                     rawInputCallback.onEndRawDrawing(activeTouchPoint);
                 }
+                motionUpPoint(activeTouchPoint);
             }
             break;
             case MotionEvent.ACTION_MOVE: {
@@ -140,9 +153,7 @@ public class TransparentScribbleView extends SurfaceView {
                     break;
                 }
 
-                activeTouchPointList.add(activeTouchPoint);
-
-                renderPath();
+                motionMovePoint(activeTouchPoint);
 
                 if (rawInputCallback != null)
                     rawInputCallback.onRawDrawingTouchPointMoveReceived(activeTouchPoint);
@@ -157,7 +168,7 @@ public class TransparentScribbleView extends SurfaceView {
         is2StopRender = false;
         mRenderThread = new HandlerThread("RenderThread");
         mRenderThread.start();
-        mRenderHandler = new android.os.Handler(mRenderThread.getLooper()) {
+        mRenderHandler = new Handler(mRenderThread.getLooper()) {
             @Override
             public void handleMessage(Message msg) {
                 super.handleMessage(msg);
@@ -296,6 +307,7 @@ public class TransparentScribbleView extends SurfaceView {
 
     private void renderPath() {
         Log.d(TAG, "renderPath start");
+        createBitmapIfNeed();
 
         mRenderHandler.sendEmptyMessage(MSG_RENDER_PATH);
     }
@@ -335,11 +347,6 @@ public class TransparentScribbleView extends SurfaceView {
         newPathListQueue.clear();
         activeTouchPointList.getPoints().clear();
 
-        clearScreen();
-
-    }
-
-    private void clearScreen() {
         if (mEraserHandler != null) mEraserHandler.sendEmptyMessage(MSG_ERASE_PATH);
     }
 
@@ -371,13 +378,43 @@ public class TransparentScribbleView extends SurfaceView {
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         Log.d(TAG, "onAttachedToWindow");
+        createBitmapIfNeed();
+    }
+
+    private void createBitmapIfNeed() {
+        if (mBitmap != null) return;
         post(new Runnable() {
             @Override
             public void run() {
+                if (mBitmap != null) return;
                 mBitmap = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
                 mCanvas = new Canvas(mBitmap);
             }
         });
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_CREATE)
+    public void onCreate(LifecycleOwner owner) {
+        Log.d(TAG, "lifecycleOwner onCreate");
+        getHolder().addCallback(holderCallBack);
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_START)
+    public void onStart(LifecycleOwner owner) {
+        Log.d(TAG, "lifecycleOwner onStart");
+
+        this.post(new Runnable() {
+            @Override
+            public void run() {
+                setRawDrawingEnableAfterSurfaceCreated(true);
+            }
+        });
+    }
+
+    @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
+    public void onStop(LifecycleOwner owner) {
+        Log.d(TAG, "lifecycleOwner onStop");
+        setRawDrawingEnableAfterSurfaceCreated(false);
     }
 
     @Override
@@ -387,6 +424,92 @@ public class TransparentScribbleView extends SurfaceView {
         if (mBitmap != null && !mBitmap.isRecycled()) {
             mBitmap.recycle();
             mBitmap = null;
+        }
+    }
+
+    @Override
+    public void motionDownPoint(TouchPoint point) {
+        activeTouchPointList.getPoints().clear();
+        activeTouchPointList.add(point);
+        renderPath();
+    }
+
+    @Override
+    public void motionMovePoint(TouchPoint point) {
+        activeTouchPointList.add(point);
+
+        renderPath();
+    }
+
+    @Override
+    public void motionUpPoint(TouchPoint point) {
+
+        activeTouchPointList.add(point);
+        renderPath();
+
+        TouchPointList touchPointList2 = new TouchPointList(activeTouchPointList.size());
+        touchPointList2.addAll(activeTouchPointList);
+        newPathListQueue.add(touchPointList2);
+
+        activeTouchPointList.getPoints().clear();
+    }
+
+    @Override
+    public void motionDownErasePoint(TouchPoint point) {
+// TODO: 2021/5/8
+    }
+
+    @Override
+    public void motionMoveErasePoint(TouchPoint point) {
+// TODO: 2021/5/8
+    }
+
+    @Override
+    public void motionUpErasePoint(TouchPoint point) {
+// TODO: 2021/5/8
+    }
+
+    @Override
+    public void addPaths2Canvas(List<TouchPointList> paths) {
+        if (paths == null || paths.isEmpty()) return;
+        newPathListQueue.addAll(paths);
+        post(new Runnable() {
+            @Override
+            public void run() {
+                renderPath();
+            }
+        });
+    }
+
+    @Override
+    public void setBgBmp(Bitmap bmp) {
+        mBgBitmap = bmp;
+        refreshCanvas();
+    }
+
+    private void refreshCanvas() {
+        Canvas canvas = null;
+        try {
+
+            if (getHolder() != null && getHolder().getSurface().isValid()) {
+
+                canvas = getHolder().lockCanvas();
+
+                //将bitmap绘制到canvas中
+                Rect dstRect = new Rect(0, 0, getWidth(), getHeight());
+                if (mBgBitmap != null) canvas.drawBitmap(mBgBitmap, null, dstRect, renderPaint);
+                canvas.drawBitmap(mBitmap, null, dstRect, renderPaint);
+
+            } else {
+                Log.e(TAG, "refreshCanvas surfaceView released return");
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (canvas != null) {
+                getHolder().unlockCanvasAndPost(canvas);
+            }
         }
     }
 }
